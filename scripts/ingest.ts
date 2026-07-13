@@ -203,12 +203,19 @@ async function ingestCma() {
 
 // -----------------------------------------------------------------------
 
-const only = process.argv[2];
-if (only && !["met", "aic", "cma"].includes(only)) {
-  console.error("usage: tsx scripts/ingest.ts [met|aic|cma]");
-  process.exit(1);
+async function main() {
+  const only = process.argv[2];
+  if (only && !["met", "aic", "cma"].includes(only)) {
+    console.error("usage: tsx scripts/ingest.ts [met|aic|cma]");
+    process.exit(1);
+  }
+  if (!only || only === "cma") await ingestCma();
+  if (!only || only === "aic") await ingestAic();
+  if (!only || only === "met") await ingestMet();
+  console.log("ingestion complete");
 }
-if (!only || only === "cma") await ingestCma();
-if (!only || only === "aic") await ingestAic();
-if (!only || only === "met") await ingestMet();
-console.log("ingestion complete");
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
