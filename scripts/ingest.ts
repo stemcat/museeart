@@ -2,11 +2,12 @@
  * Ingest public-domain highlights from The Met, the Art Institute of Chicago,
  * and the Cleveland Museum of Art into the artworks pool.
  *
- * Run locally (never deployed):  npx tsx scripts/ingest.ts [met|aic|cma]
+ * Run locally (never deployed):
+ *   npx tsx --env-file=.env.local scripts/ingest.ts [met|aic|cma]
+ *
+ * Env must come from --env-file: a dotenv call in this file would run AFTER
+ * the hoisted ../src/db import, leaving the Neon client without DATABASE_URL.
  */
-import { config } from "dotenv";
-config({ path: ".env.local" });
-
 import { sql } from "drizzle-orm";
 import { db } from "../src/db";
 import { artworks } from "../src/db/schema";

@@ -16,7 +16,7 @@ One public-domain masterpiece per day — the work, its story, nothing else. Art
 npm install
 vercel env pull .env.local   # DATABASE_URL, CRON_SECRET, RESEND_API_KEY, …
 npx drizzle-kit push         # apply schema
-npx tsx scripts/ingest.ts    # fill the artwork pool (run locally, ~30 min)
+npx tsx --env-file=.env.local scripts/ingest.ts    # fill the artwork pool (~30 min)
 npm run dev
 ```
 
