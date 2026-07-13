@@ -1,26 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Warm gallery light — one lighting scheme, like a museum */
+  --parchment: #f7f4ee;
+  --ink: #1c1a17;
+  --umber: #57503f;
+  --stone: #8a8172;
+  --hairline: #ddd5c7;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-parchment: var(--parchment);
+  --color-ink: var(--ink);
+  --color-umber: var(--umber);
+  --color-stone: var(--stone);
+  --color-hairline: var(--hairline);
+  --font-display: var(--font-cormorant);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+::selection {
+  background: var(--ink);
+  color: var(--parchment);
 }
