@@ -1,36 +1,27 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Le Musée Quotidien — [musee.art](https://musee.art)
 
-## Getting Started
+A museum with one room, rehung every day.
 
-First, run the development server:
+One public-domain masterpiece per day — the work, its story, nothing else. Artworks come from the open-access collections of [The Metropolitan Museum of Art](https://www.metmuseum.org/about-the-met/policies-and-documents/open-access), the [Art Institute of Chicago](https://www.artic.edu/open-access), and the [Cleveland Museum of Art](https://www.clevelandart.org/open-access).
+
+## How it works
+
+- A **Vercel cron** (`/api/cron/daily`, 23:30 UTC) picks one unused artwork from the pool, has Claude write its wall text (via Vercel AI Gateway), stores it, revalidates the pages, and sends the email edition via Resend. Every step is idempotent — the site's "day" is the Europe/Paris calendar date.
+- **Pages**: `/` (today), `/day/[date]` (permalinks), `/collection` (the permanent collection), `/about`.
+- **Stack**: Next.js App Router · Neon Postgres + Drizzle · AI SDK · Resend · Tailwind.
+
+## Development
 
 ```bash
+npm install
+vercel env pull .env.local   # DATABASE_URL, CRON_SECRET, RESEND_API_KEY, …
+npx drizzle-kit push         # apply schema
+npx tsx scripts/ingest.ts    # fill the artwork pool (run locally, ~30 min)
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Trigger a day manually:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/daily
+```
