@@ -29,8 +29,21 @@ async function getJson(url: string, init?: RequestInit, retries = 3): Promise<un
   }
 }
 
-async function upsert(rows: NewArtwork[]) {
+async function upsert(rows: NewArtwork[], retries = 4) {
   if (rows.length === 0) return;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await doUpsert(rows);
+      return;
+    } catch (err) {
+      if (attempt > retries) throw err;
+      console.warn(`[db] upsert failed (attempt ${attempt}), retrying…`);
+      await sleep(3000 * attempt);
+    }
+  }
+}
+
+async function doUpsert(rows: NewArtwork[]) {
   await db
     .insert(artworks)
     .values(rows)
