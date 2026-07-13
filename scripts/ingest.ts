@@ -16,16 +16,23 @@ type NewArtwork = typeof artworks.$inferInsert;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function getJson(url: string, init?: RequestInit, retries = 3): Promise<unknown> {
+let skippedRequests = 0;
+
+async function getJson(url: string, init?: RequestInit, retries = 5): Promise<unknown> {
   for (let attempt = 1; ; attempt++) {
     try {
       const res = await fetch(url, init);
-      if (res.status === 429 || res.status >= 500) throw new Error(`HTTP ${res.status}`);
-      if (!res.ok) return null;
+      if (res.status === 404) return null;
+      // Everything else non-OK (403 rate bans, 429, 5xx) is worth backing off and retrying
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err) {
-      if (attempt > retries) throw err;
-      await sleep(2000 * attempt);
+      if (attempt > retries) {
+        skippedRequests++;
+        console.warn(`[skip] ${url} — ${(err as Error).message}`);
+        return null;
+      }
+      await sleep(5000 * attempt);
     }
   }
 }
@@ -85,7 +92,7 @@ async function ingestMet() {
     const obj = (await getJson(
       `https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`,
     )) as Record<string, unknown> | null;
-    await sleep(120); // ~8 req/s, well under the Met's 80/s cap
+    await sleep(400); // the Met 403-bans sustained crawls despite the stated 80/s cap — go slow
 
     if (!obj || obj.isPublicDomain !== true || !obj.primaryImage) continue;
     batch.push({
@@ -230,7 +237,9 @@ async function main() {
   if (!only || only === "cma") await ingestCma();
   if (!only || only === "aic") await ingestAic();
   if (!only || only === "met") await ingestMet();
-  console.log("ingestion complete");
+  console.log(
+    `ingestion complete${skippedRequests ? ` — ${skippedRequests} requests skipped after retries` : ""}`,
+  );
 }
 
 main().catch((err) => {
