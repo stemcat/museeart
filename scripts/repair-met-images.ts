@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { and, eq, isNotNull, like, or, sql } from "drizzle-orm";
 import { db } from "../src/db";
@@ -31,6 +32,7 @@ async function main() {
   console.log(`Checking ${rows.length} legacy Met records (${options.apply ? "apply" : "dry run"})`);
   let count = 0;
   for (const row of rows) {
+    await sleep(400); // Pace the bulk checks like the regular Met import.
     let images;
     try {
       images = await resolveMetImages(row.sourceId, links);
