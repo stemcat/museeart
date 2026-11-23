@@ -20,6 +20,16 @@ npx tsx --env-file=.env.local scripts/ingest.ts    # fill the artwork pool (~30 
 npm run dev
 ```
 
+The Met import checks each public-domain artwork's catalogue image and stores the working museum URLs. Check the published Met entries already in the database with this command.
+
+```bash
+npx tsx --env-file=.env.local scripts/repair-met-images.ts
+```
+
+Add `--apply` to update the image URLs or `--all` to include unpublished artworks. The museum continues to host the image files.
+
+Both the Met import and repair accept a list of known catalogue image links. Set `MET_CATALOGUE_LINKS` to the path of a text file containing one image URL per line, such as `https://collectionapi.metmuseum.org/api/collection/v1/iiif/466287/1523144/main-image`. The Met import then checks only highlights listed in the file. Each link is verified against the museum before it is stored.
+
 Trigger a day manually:
 
 ```bash

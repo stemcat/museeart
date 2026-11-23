@@ -11,10 +11,17 @@
 import { sql } from "drizzle-orm";
 import { db } from "../src/db";
 import { artworks } from "../src/db/schema";
+import {
+  loadMetCatalogueLinks,
+  MetRateLimitError,
+  resolveMetImages,
+  throwIfMetRateLimited,
+} from "./lib/met-images";
 
 type NewArtwork = typeof artworks.$inferInsert;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const metApi = "https://collectionapi.metmuseum.org/public/collection";
 
 let skippedRequests = 0;
 
@@ -22,11 +29,13 @@ async function getJson(url: string, init?: RequestInit, retries = 5): Promise<un
   for (let attempt = 1; ; attempt++) {
     try {
       const res = await fetch(url, init);
+      if (url.startsWith(`${metApi}/`)) await throwIfMetRateLimited(res, url);
       if (res.status === 404) return null;
       // Everything else non-OK (403 rate bans, 429, 5xx) is worth backing off and retrying
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err) {
+      if (err instanceof MetRateLimitError) throw err;
       if (attempt > retries) {
         skippedRequests++;
         console.warn(`[skip] ${url} — ${(err as Error).message}`);
@@ -77,38 +86,68 @@ async function doUpsert(rows: NewArtwork[]) {
 
 // ---------------------------------------------------------------- The Met
 
+async function getMetHighlightIds() {
+  const ids: number[] = [];
+  for (;;) {
+    const page = (await getJson(
+      `${metApi}/v1.1/search?isHighlight=true&hasImages=true&limit=500&offset=${ids.length}`,
+    )) as { total: number; objectIDs: number[] } | null;
+    if (!page) throw new Error(`Met highlight search failed at offset ${ids.length}`);
+    if (page.total === 0) return ids;
+    if (!page.objectIDs?.length) throw new Error("Met highlight search returned an incomplete result");
+    ids.push(...page.objectIDs);
+    if (ids.length >= page.total) return ids;
+  }
+}
+
+async function getMetArtwork(id: number, links?: ReadonlyMap<string, string>): Promise<NewArtwork | null> {
+  // isPublicDomain is only available per object, not as a search filter
+  const obj = (await getJson(`${metApi}/v1/objects/${id}`)) as Record<string, unknown> | null;
+  await sleep(400);
+  if (!obj || obj.isPublicDomain !== true) return null;
+
+  const sourceId = String(id);
+  const images = await resolveMetImages(sourceId, links);
+  return {
+    source: "met",
+    sourceId,
+    title: (obj.title as string) || "Untitled",
+    artist: (obj.artistDisplayName as string) || null,
+    dateDisplay: (obj.objectDate as string) || null,
+    medium: (obj.medium as string) || null,
+    creditLine: (obj.creditLine as string) || "The Metropolitan Museum of Art, New York",
+    museumName: "The Metropolitan Museum of Art",
+    sourceUrl: (obj.objectURL as string) || `https://www.metmuseum.org/art/collection/search/${id}`,
+    ...images,
+    metadata: obj,
+  };
+}
+
 async function ingestMet() {
+  const links = process.env.MET_CATALOGUE_LINKS
+    ? await loadMetCatalogueLinks(process.env.MET_CATALOGUE_LINKS)
+    : undefined;
   console.log("[met] searching highlights…");
-  const search = (await getJson(
-    "https://collectionapi.metmuseum.org/public/collection/v1/search?isHighlight=true&hasImages=true&q=*",
-  )) as { objectIDs?: number[] } | null;
-  const ids = search?.objectIDs ?? [];
-  console.log(`[met] ${ids.length} highlight objects to inspect`);
+  const highlights = await getMetHighlightIds();
+  const ids = links ? highlights.filter((id) => links.has(String(id))) : highlights;
+  console.log(`[met] inspecting ${ids.length} of ${highlights.length} highlight objects`);
 
   let kept = 0;
   let batch: NewArtwork[] = [];
   for (const [i, id] of ids.entries()) {
-    // isPublicDomain is only available per object, not as a search filter
-    const obj = (await getJson(
-      `https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`,
-    )) as Record<string, unknown> | null;
-    await sleep(400); // the Met 403-bans sustained crawls despite the stated 80/s cap — go slow
-
-    if (!obj || obj.isPublicDomain !== true || !obj.primaryImage) continue;
-    batch.push({
-      source: "met",
-      sourceId: String(id),
-      title: (obj.title as string) || "Untitled",
-      artist: (obj.artistDisplayName as string) || null,
-      dateDisplay: (obj.objectDate as string) || null,
-      medium: (obj.medium as string) || null,
-      creditLine: (obj.creditLine as string) || "The Metropolitan Museum of Art, New York",
-      museumName: "The Metropolitan Museum of Art",
-      sourceUrl: (obj.objectURL as string) || `https://www.metmuseum.org/art/collection/search/${id}`,
-      imageUrl: obj.primaryImage as string,
-      imageSmallUrl: (obj.primaryImageSmall as string) || (obj.primaryImage as string),
-      metadata: obj,
-    });
+    try {
+      const artwork = await getMetArtwork(id, links);
+      if (!artwork) continue;
+      batch.push(artwork);
+    } catch (err) {
+      if (err instanceof MetRateLimitError) {
+        await upsert(batch);
+        throw err;
+      }
+      skippedRequests++;
+      console.warn(`[met] skipping ${id} — ${(err as Error).message}`);
+      continue;
+    }
     kept++;
     if (batch.length >= 50) {
       await upsert(batch);
@@ -238,7 +277,7 @@ async function main() {
   if (!only || only === "aic") await ingestAic();
   if (!only || only === "met") await ingestMet();
   console.log(
-    `ingestion complete${skippedRequests ? ` — ${skippedRequests} requests skipped after retries` : ""}`,
+    `ingestion complete${skippedRequests ? ` — ${skippedRequests} requests skipped` : ""}`,
   );
 }
 
