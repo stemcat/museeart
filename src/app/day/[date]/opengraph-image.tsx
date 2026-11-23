@@ -27,11 +27,12 @@ export default async function OpengraphImage({
           background: "#f7f4ee",
         }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={artwork.imageSmallUrl}
           alt=""
-          style={{ width: 630, height: 630, objectFit: "cover" }}
+          width={630}
+          height={630}
+          style={{ objectFit: "cover" }}
         />
         <div
           style={{
