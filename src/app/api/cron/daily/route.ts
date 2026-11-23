@@ -27,6 +27,8 @@ export async function GET(request: Request) {
     .where(eq(dailyPicks.date, today));
 
   if (!pick) {
+    // Keep legacy Met records available for repair until both catalogue links are verified.
+    const metImages = "https://collectionapi.metmuseum.org/api/collection/v1/iiif/%";
     // Atomic claim — no interactive transaction needed (neon-http can't hold one),
     // and the slow AI call below never holds a lock.
     const [claimed] = await db
@@ -37,7 +39,10 @@ export async function GET(request: Request) {
           isNull(artworks.usedOn),
           eq(
             artworks.id,
-            sql`(select id from artworks where used_on is null order by random() limit 1)`,
+            sql`(select id from artworks
+                 where used_on is null
+                   and (source <> 'met' or (image_url like ${metImages} and image_small_url like ${metImages}))
+                 order by random() limit 1)`,
           ),
         ),
       )

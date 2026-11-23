@@ -29,13 +29,18 @@ export async function throwIfMetRateLimited(response: Response, url: string): Pr
 async function getMetResource(url: string, accept: string): Promise<Response> {
   const response = await fetch(url, {
     headers: { Accept: accept },
-    redirect: "error",
+    redirect: "manual",
     signal: AbortSignal.timeout(20_000),
   });
   if (response.ok) return response;
 
   await throwIfMetRateLimited(response, url);
   await response.body?.cancel();
+  // The museum can redirect an entire batch back to the same URL without a Retry-After.
+  const location = response.headers.get("location");
+  if (response.status >= 300 && response.status < 400 && location && new URL(location, url).href === url) {
+    throw new MetRateLimitError(`Met redirected to the same URL; retry this batch later: ${url}`);
+  }
   throw new Error(`Met returned HTTP ${response.status} for ${url}`);
 }
 
